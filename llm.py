@@ -44,18 +44,40 @@ class DeepSeekClient:
     """
 
     # 系统提示词配置
-    system_prompt = {
+    system_prompt_for_get_article_info = {
         "role": "system",
         "content": """
-            你是一个智能助手。
-            请阅读用户发送的文章并提供以下信息：
-            1. 文章作者是谁？
-            2. 文章可以分类为什么类型？
-            3. 需要为文章生成AI封面图，请提供合适的绘图提示词。
-            请用中文回答，并按以下格式输出：
-            {"author":作者, "category":分类, "cover_image_prompt":封面提示词}。
-            封面提示词请使用英文。
-            如果无法确定作者，请将author设置为"unknown"。
+            You are a smart assistant.
+            Please read the article sent by the user and provide the following information:
+            1. Who is the author of the article?
+            2. What type of article can it be classified as?
+            3. Need to generate an AI cover image for the article, please provide suitable drawing prompts.
+            Please answer in Chinese and output in the following format:
+            {"author": author, "category": category, "cover_image_prompt": cover_image_prompt, "author_english_name": author name in English or Chinese Pinyin, "author_chinese_name": author name in Chinese(if available) or none if you unknown}。
+            The cover image prompt should be in English.
+            If you cannot determine the author, please set author to "unknown".
+            The article type can be multiple.
+            """
+    }
+    system_prompt_for_get_author_info = {
+        "role": "system",
+        "content": """
+            You are a smart assistant.
+            Please read the information sent by the user and provide the following information:
+            1. The person with this name might be a celebrity, a scientist, a politician, a financial industry expert, or a well-known blog author. So, who is the person with this name? If you don't know, don't make it up. Just answer “unknown.” If the name is incomplete, please provide the full English name (if available) and the Chinese name (if available).
+            2. Provide a brief introduction of this person.
+            Please answer in Chinese and output in the following format:
+            {"english name":english name, "chinese name":chinese name, "introduction": introduction}。
+            The English name should be in English.
+            """
+    }
+    system_prompt_for_get_field_info = {
+        "role": "system",
+        "content": """
+            You are a smart assistant.
+            I’d like to classify some articles and have come up with my own category names. Could you analyze my naming and guess the reasoning behind the classification?
+            Please answer in Chinese and output in the following format:
+            {"category":category, "reason":reason}。
             """
     }
 
@@ -115,7 +137,7 @@ class DeepSeekClient:
         answer = json.loads("".join(a))
         return answer
 
-    def get_article_info(self, article_text: Union[str, Path]) -> Dict:
+    def get_article_info_from_file(self, article_text: Union[str, Path]) -> Dict:
         """获取文章信息
 
         Args:
@@ -134,7 +156,7 @@ class DeepSeekClient:
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                self.system_prompt,
+                self.system_prompt_for_get_article_info,
                 {"role": "user", "content": self.check_file(article_text)},
             ],
             stream=False
@@ -148,6 +170,64 @@ class DeepSeekClient:
                 f.write(f"{article_text}\n{content}\n\n")
             print(f"Error: {e}")
             return None
+
+    def get_article_info(self, author_info: Dict) -> Dict:
+        """_summary_
+
+        Args:
+            author_info (Dict): _description_
+
+        Returns:
+            Dict: _description_
+        """
+        name = author_info.get('name')
+        desc = author_info.get('description')
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                self.system_prompt_for_get_author_info,
+                {"role": "user", "content": f"{name}, {desc}"},
+            ],
+            stream=False
+        )
+        content = response.choices[0].message.content
+        try:
+            return self.answer_to_json(content)
+        except json.decoder.JSONDecodeError as e:
+            # 保存错误日志
+            with open(f"tmp/{uuid4().hex}.txt", "a", encoding="utf-8") as f:
+                f.write(f"{author_info.get('id')}\n{content}\n\n")
+            print(f"Error: {e}")
+            return None
+
+    def get_field_info(self, field_info: Dict) -> Dict:
+        """_summary_
+
+        Args:
+            author_info (Dict): _description_
+
+        Returns:
+            Dict: _description_
+        """
+        name = field_info.get('name')
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                self.system_prompt_for_get_field_info,
+                {"role": "user", "content": f"{name}"},
+            ],
+            stream=False
+        )
+        content = response.choices[0].message.content
+        try:
+            return self.answer_to_json(content)
+        except json.decoder.JSONDecodeError as e:
+            # 保存错误日志
+            with open(f"tmp/{uuid4().hex}.txt", "a", encoding="utf-8") as f:
+                f.write(f"{field_info.get('id')}\n{content}\n\n")
+            print(f"Error: {e}")
+            return None
+
 
 
 class OllamaClient(DeepSeekClient):
