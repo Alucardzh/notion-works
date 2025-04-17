@@ -102,7 +102,7 @@ class NotionAsyncAPI:
 
     async def get_database_data(
         self, database_id: str, use_cache: bool = True,
-        filter_property: List[str] = ["properties", "page_id", "url"],
+        filter_property: List[str] = None,
         page_size: int = 100
     ) -> Dict:
         """获取数据库的内容
@@ -116,6 +116,7 @@ class NotionAsyncAPI:
         Returns:
             数据库内容字典列表
         """
+        filter_property = filter_property or ["properties", "id", "url"]
         try:
             await self._rate_limit_wait()
             if use_cache and database_id in self._database_cache:
@@ -136,7 +137,7 @@ class NotionAsyncAPI:
 
                 # 执行查询
                 responses = await self.notion.databases.query(**query_params)
-                
+
                 # 处理当前页的结果
                 results = [{
                     item: response.get(item, {}) for item in filter_property
@@ -250,8 +251,8 @@ class NotionAsyncAPI:
     async def query_database_with_filter(
         self,
         database_id: str,
-        filter_property: str,
-        filter_value: Union[str, int, bool, List],
+        filter_property: str = None,
+        filter_value: Union[str, int, bool, List] = None,
         filter_type: str = "equals",
         page_size: int = 100
     ) -> List[Dict]:
@@ -549,33 +550,33 @@ class NotionAsyncAPI:
             bool: 更新是否成功
 
         示例:
-            await update_page_properties(
-                page_id="xxx",
-                properties_to_update={
-                    "标题": {"value": "新标题", "type": "title"},
-                    "状态": {"value": "完成", "type": "status"},
-                    "数量": {"value": 42, "type": "number"},
-                    "标签": {"value": ["标签1", "标签2"], "type": "multi_select"},
-                    "关联": {"value": ["page-id-1", "page-id-2"], "type": "relation"}
-                }
-            )
+        await update_page_properties(
+            page_id="xxx",
+            properties_to_update={
+                "标题": {"value": "新标题", "type": "title"},
+                "状态": {"value": "完成", "type": "status"},
+                "数量": {"value": 42, "type": "number"},
+                "标签": {"value": ["标签1", "标签2"], "type": "multi_select"},
+                "关联": {"value": ["page-id-1", "page-id-2"], "type": "relation"}
+            }
+        )
         """
         try:
             await self._rate_limit_wait()
-            
+
             # 如果没有提供属性类型，获取页面属性以确定类型
             page = await self.notion.pages.retrieve(page_id=page_id)
             current_properties = page.get("properties", {})
-            
+
             # 构建更新数据
             properties = {}
-            
+
             for prop_name, prop_data in properties_to_update.items():
                 prop_value = prop_data["value"]
                 # 如果未指定类型，从现有属性中获取
                 prop_type = prop_data.get("type") or current_properties.get(
                     prop_name, {}).get("type")
-                
+
                 if not prop_type:
                     logger.error(f"属性 '{prop_name}' 类型未知")
                     continue
