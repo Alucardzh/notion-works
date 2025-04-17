@@ -6,15 +6,15 @@
 
 import os
 from pathlib import Path
-import logging
 from typing import Optional, Dict, List, Union, Any
 import asyncio
 import aiofiles
 from dotenv import load_dotenv
 from notion_client import AsyncClient
+from logging_config import setup_logger
 
 # 配置日志
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 async def save_data_to_file(data: str, filename: str) -> None:
@@ -78,7 +78,7 @@ class NotionAsyncAPI:
             } for db in databases if db.get('title', [])]
             return self._databases
         except Exception as e:
-            logger.error(f"获取格式化数据库列表时出错: {e}")
+            logger.error("获取格式化数据库列表时出错: %s", e)
             return []
 
     async def get_database_schema(self, database_id: str) -> Dict:
@@ -97,7 +97,7 @@ class NotionAsyncAPI:
             )
             return response.get("properties", {})
         except Exception as e:
-            print(f"获取数据库模式时出错: {e}")
+            logger.error("获取数据库模式时出错: %s", e)
             return {}
 
     async def get_database_data(
@@ -157,7 +157,7 @@ class NotionAsyncAPI:
             return all_results
 
         except Exception as e:
-            logger.error(f"获取数据库数据时出错: {e}")
+            logger.error("获取数据库数据时出错: %s", e)
             return []
 
     async def add_database_property(
@@ -181,7 +181,7 @@ class NotionAsyncAPI:
             schema = await self.get_database_schema(database_id)
 
             if property_name in schema:
-                logger.warning(f"属性 '{property_name}' 已存在")
+                logger.warning("属性 '%s' 已存在", property_name)
                 return False
 
             # 根据不同属性类型构建属性配置
@@ -213,10 +213,10 @@ class NotionAsyncAPI:
                 database_id=database_id,
                 properties=property_config
             )
-            logger.info(f"成功添加属性: {property_name} ({property_type})")
+            logger.info("成功添加属性: %s (%s)", property_name, property_type)
             return True
         except Exception as e:
-            logger.error(f"添加数据库属性时出错: {e}")
+            logger.error("添加数据库属性时出错: %s", e)
             return False
 
     async def remove_database_property(
@@ -236,7 +236,7 @@ class NotionAsyncAPI:
             schema = await self.get_database_schema(database_id)
 
             if property_name not in schema:
-                print(f"属性 '{property_name}' 不存在")
+                logger.warning("属性 '%s' 不存在", property_name)
                 return False
 
             await self.notion.databases.update(
@@ -245,7 +245,7 @@ class NotionAsyncAPI:
             )
             return True
         except Exception as e:
-            print(f"删除数据库属性时出错: {e}")
+            logger.error("删除数据库属性时出错: %s", e)
             return False
 
     async def query_database_with_filter(
@@ -290,7 +290,7 @@ class NotionAsyncAPI:
             # 获取数据库模式以确定属性类型
             schema = await self.get_database_schema(database_id)
             if filter_property not in schema:
-                logger.error(f"属性 '{filter_property}' 不存在")
+                logger.error("属性 '%s' 不存在", filter_property)
                 return []
 
             property_type = schema[filter_property]["type"]
@@ -379,7 +379,7 @@ class NotionAsyncAPI:
             return all_results
 
         except Exception as e:
-            logger.error(f"查询数据库时出错: {e}")
+            logger.error("查询数据库时出错: %s", e)
             return []
 
     async def get_page_content(self, page_id: str) -> List[Dict]:
@@ -389,7 +389,7 @@ class NotionAsyncAPI:
             response = await self.notion.blocks.children.list(block_id=page_id)
             return response.get("results", [])
         except Exception as e:
-            print(f"获取页面内容时出错: {e}")
+            logger.error("获取页面内容时出错: %s", e)
             return []
 
     def clear_database_cache(self, database_id: Optional[str] = None):
@@ -495,7 +495,7 @@ class NotionAsyncAPI:
             return markdown_text, blocks
 
         except Exception as e:
-            logger.error(f"导出Markdown时出错: {e}")
+            logger.error("导出Markdown时出错: %s", e)
             return None
 
     def _extract_rich_text(self, rich_text: List[Dict]) -> str:
@@ -578,7 +578,7 @@ class NotionAsyncAPI:
                     prop_name, {}).get("type")
 
                 if not prop_type:
-                    logger.error(f"属性 '{prop_name}' 类型未知")
+                    logger.error("属性 '%s' 类型未知", prop_name)
                     continue
 
                 # 根据不同属性类型构建更新数据
@@ -655,7 +655,7 @@ class NotionAsyncAPI:
                         }
                     case _:
                         logger.warning(
-                            f"属性类型 '{prop_type}' 可能不支持: {prop_name}")
+                            "属性类型 '%s' 可能不支持: %s", prop_type, prop_name)
                         continue
 
             if not properties:
@@ -667,11 +667,11 @@ class NotionAsyncAPI:
                 page_id=page_id,
                 properties=properties
             )
-            logger.info(f"成功更新属性: {list(properties.keys())}")
+            logger.info("成功更新属性: %s", list(properties.keys()))
             return True
 
         except Exception as e:
-            logger.error(f"更新页面属性时出错: {e}")
+            logger.error("更新页面属性时出错: %s", e)
             return False
 
     # 为了保持向后兼容，保留原来的方法名但调用新方法
@@ -753,7 +753,7 @@ class NotionAsyncAPI:
             # 获取数据库模式以验证属性
             schema = await self.get_database_schema(database_id)
             if not schema:
-                logger.error(f"无法获取数据库模式: {database_id}")
+                logger.error("无法获取数据库模式: %s", database_id)
                 return None
 
             # 构建页面属性
@@ -762,7 +762,7 @@ class NotionAsyncAPI:
             for prop_name, prop_data in properties.items():
                 # 检查属性是否存在于数据库模式中
                 if prop_name not in schema:
-                    logger.warning(f"数据库中不存在属性: {prop_name}")
+                    logger.warning("数据库中不存在属性: %s", prop_name)
                     continue
 
                 prop_value = prop_data["value"]
@@ -854,7 +854,7 @@ class NotionAsyncAPI:
                         }
                     case _:
                         logger.warning(
-                            f"不支持的属性类型 '{prop_type}': {prop_name}")
+                            "不支持的属性类型 '%s': %s", prop_type, prop_name)
                         continue
 
             # 验证是否有有效的属性
@@ -871,12 +871,12 @@ class NotionAsyncAPI:
             # 获取并返回新创建的页面ID
             new_page_id = response.get("id")
             if new_page_id:
-                logger.info(f"成功创建新条目: {new_page_id}")
+                logger.info("成功创建新条目: %s", new_page_id)
                 return new_page_id
             else:
                 logger.error("创建条目成功但未返回ID")
                 return None
 
         except Exception as e:
-            logger.error(f"创建数据库条目时出错: {e}")
+            logger.error("创建数据库条目时出错: %s", e)
             return None

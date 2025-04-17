@@ -27,7 +27,7 @@ async def main():
     articles = await workflow.worklow_get_articles(
         database_id='c3f1101c-fbf7-4702-8dc4-a22578ac6430',
         fliter='未开始', filter_type="equals")
-    for article in articles:  # 当前仅处理第一篇文章
+    for article in articles:
         try:
             res = await workflow.workflow_main(
                 article=article, fields=fields)
@@ -35,8 +35,9 @@ async def main():
         except Exception as e:
             print(e)
             pass_articles += [article]
-    with open('pass_articles.json', 'w+', encoding='utf-8') as f:
-        f.write(dumps(pass_articles, ensure_ascii=False))
+    if pass_articles:
+        with open('pass_articles.json', 'w+', encoding='utf-8') as f:
+            f.write(dumps(pass_articles, ensure_ascii=False))
 
 if __name__ == "__main__":
     asyncio.run(main())

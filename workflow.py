@@ -149,9 +149,10 @@ class WorkFlow:
             # 获取或创建作者ID
             author_id = await self.workflow_get_author_id(
                 article_info=article_info)
+        # 暂存LLM返回的结果
         await save_temp_data_to_json(
             {**article_info, **article},
-            self.save_path / f'{article.get("id")}.json')
+            self.save_path / 'output' / f'{article.get("id")}.json')
         # 更新文章信息
         return await self.notion_workspace.update_article_detail(
             page_id=article.get('id'),
