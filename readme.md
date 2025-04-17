@@ -17,18 +17,28 @@
 ## 安装
 
 1. 克隆仓库：
+
 ```bash
 git clone https://github.com/Alucardzh/notion-works.git
 cd notion-works
 ```
 
 2. 安装依赖：
+
 ```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
 3. 配置环境变量：
-在项目根目录创建 `.env` 文件并添加您的 Notion API Token：
+
+```bash
+cp .env.template .env
+```
+
+在 `.env` 文件中添加您的 Notion API Token，以及其他llm的api：
+
 ```env
 NOTION_WORKSPACE_TOKEN=your_notion_api_token_here
 ```

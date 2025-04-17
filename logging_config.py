@@ -15,7 +15,7 @@ def setup_logger(name: str = None) -> logging.Logger:
     """配置并返回一个日志记录器
 
     Args:
-        name: 日志记录器名称，默认为None（使用root logger）
+        name: 日志记录器名称,默认为None(使用root logger)
 
     Returns:
         logging.Logger: 配置好的日志记录器

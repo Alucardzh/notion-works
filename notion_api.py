@@ -39,7 +39,7 @@ class NotionAsyncAPI:
         """初始化 Notion 异步客户端
 
         Args:
-            rate_limit: API调用间隔时间（秒）
+            rate_limit: API调用间隔时间(秒)
         """
         load_dotenv()
         self.notion = AsyncClient(auth=os.getenv("NOTION_WORKSPACE_TOKEN"))
