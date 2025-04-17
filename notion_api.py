@@ -693,4 +693,190 @@ class NotionAsyncAPI:
             }
         )
 
+    async def create_database_item(
+        self,
+        database_id: str,
+        properties: Dict[str, Dict[str, Any]]
+    ) -> Optional[str]:
+        """创建数据库新条目
 
+        此方法用于在指定的 Notion 数据库中创建新的条目。支持所有 Notion 属性类型，
+        并会自动进行类型验证和转换。
+
+        Args:
+            database_id: 数据库ID
+            properties: 属性值字典，格式为：
+                {
+                    "属性名": {
+                        "value": 值,  # 属性值
+                        "type": 属性类型  # 可选，如果不指定则自动从数据库模式中获取
+                    }
+                }
+
+        Returns:
+            Optional[str]: 新创建条目的ID，如果创建失败则返回 None
+
+        支持的属性类型:
+            - title: 标题
+            - rich_text: 富文本
+            - number: 数字
+            - select: 单选
+            - multi_select: 多选
+            - status: 状态
+            - date: 日期
+            - checkbox: 复选框
+            - url: 网址
+            - email: 电子邮件
+            - phone_number: 电话号码
+            - relation: 关联关系
+
+        示例:
+            await create_database_item(
+                database_id="xxx",
+                properties={
+                    "标题": {"value": "新条目", "type": "title"},
+                    "状态": {"value": "进行中"},  # type 可选，会自动识别
+                    "数量": {"value": 42, "type": "number"},
+                    "标签": {"value": ["标签1", "标签2"]},
+                    "关联": {"value": ["page-id-1"]}
+                }
+            )
+
+        注意:
+            1. 必须提供数据库要求的所有必填属性，否则创建会失败
+            2. 属性类型如果不指定，会自动从数据库模式中获取
+            3. 所有错误和警告都会通过 logger 记录
+        """
+        try:
+            await self._rate_limit_wait()
+
+            # 获取数据库模式以验证属性
+            schema = await self.get_database_schema(database_id)
+            if not schema:
+                logger.error(f"无法获取数据库模式: {database_id}")
+                return None
+
+            # 构建页面属性
+            page_properties = {}
+
+            for prop_name, prop_data in properties.items():
+                # 检查属性是否存在于数据库模式中
+                if prop_name not in schema:
+                    logger.warning(f"数据库中不存在属性: {prop_name}")
+                    continue
+
+                prop_value = prop_data["value"]
+                # 如果未指定类型，从数据库模式中获取
+                prop_type = prop_data.get("type") or schema[prop_name]["type"]
+
+                # 根据不同属性类型构建属性数据
+                match prop_type:
+                    case "rich_text":
+                        # 富文本类型：支持普通文本内容
+                        page_properties[prop_name] = {
+                            "rich_text": [{
+                                "text": {"content": str(prop_value)}
+                            }]
+                        }
+                    case "text":
+                        # 文本类型：直接存储为字符串
+                        page_properties[prop_name] = {
+                            "text": {"content": str(prop_value)}
+                        }
+                    case "number":
+                        # 数字类型：转换为浮点数
+                        page_properties[prop_name] = {
+                            "number": float(prop_value)
+                        }
+                    case "select":
+                        # 单选类型：必须是预定义的选项之一
+                        page_properties[prop_name] = {
+                            "select": {"name": str(prop_value)}
+                        }
+                    case "multi_select":
+                        # 多选类型：支持单个值或值列表
+                        if isinstance(prop_value, str):
+                            values = [prop_value]
+                        else:
+                            values = prop_value
+                        page_properties[prop_name] = {
+                            "multi_select": [
+                                {"name": str(v)} for v in values
+                            ]
+                        }
+                    case "status":
+                        # 状态类型：必须是预定义的状态值之一
+                        page_properties[prop_name] = {
+                            "status": {"name": str(prop_value)}
+                        }
+                    case "checkbox":
+                        # 复选框类型：转换为布尔值
+                        page_properties[prop_name] = {
+                            "checkbox": bool(prop_value)
+                        }
+                    case "date":
+                        # 日期类型：转换为字符串格式
+                        page_properties[prop_name] = {
+                            "date": {"start": str(prop_value)}
+                        }
+                    case "url":
+                        # URL类型：存储为字符串
+                        page_properties[prop_name] = {
+                            "url": str(prop_value)
+                        }
+                    case "email":
+                        # 电子邮件类型：存储为字符串
+                        page_properties[prop_name] = {
+                            "email": str(prop_value)
+                        }
+                    case "phone_number":
+                        # 电话号码类型：存储为字符串
+                        page_properties[prop_name] = {
+                            "phone_number": str(prop_value)
+                        }
+                    case "relation":
+                        # 关联类型：支持单个ID或ID列表
+                        if isinstance(prop_value, str):
+                            relation_ids = [prop_value]
+                        else:
+                            relation_ids = prop_value
+                        page_properties[prop_name] = {
+                            "relation": [
+                                {"id": page_id} for page_id in relation_ids
+                            ]
+                        }
+                    case "title":
+                        # 标题类型：页面的主要标识符
+                        page_properties[prop_name] = {
+                            "title": [{
+                                "text": {"content": str(prop_value)}
+                            }]
+                        }
+                    case _:
+                        logger.warning(
+                            f"不支持的属性类型 '{prop_type}': {prop_name}")
+                        continue
+
+            # 验证是否有有效的属性
+            if not page_properties:
+                logger.error("没有有效的属性可以创建")
+                return None
+
+            # 创建新页面
+            response = await self.notion.pages.create(
+                parent={"database_id": database_id},
+                properties=page_properties
+            )
+
+            # 获取并返回新创建的页面ID
+            new_page_id = response.get("id")
+            if new_page_id:
+                logger.info(f"成功创建新条目: {new_page_id}")
+                return new_page_id
+            else:
+                logger.error("创建条目成功但未返回ID")
+                return None
+
+        except Exception as e:
+            logger.error(f"创建数据库条目时出错: {e}")
+            return None

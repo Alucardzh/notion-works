@@ -53,7 +53,11 @@ class DeepSeekClient:
             2. What type of article can it be classified as?
             3. Need to generate an AI cover image for the article, please provide suitable drawing prompts.
             Please answer in Chinese and output in the following format:
-            {"author": author, "category": category, "cover_image_prompt": cover_image_prompt, "author_english_name": author name in English or Chinese Pinyin, "author_chinese_name": author name in Chinese(if available) or none if you unknown}。
+            {"author": author,
+            "category": category,
+            "cover_image_prompt": cover_image_prompt,
+            "author_english_name": author name in English or Chinese Pinyin,
+            "author_chinese_name": author name in Chinese(if available) or none if you unknown}。
             The cover image prompt should be in English.
             If you cannot determine the author, please set author to "unknown".
             The article type can be multiple.
@@ -171,7 +175,7 @@ class DeepSeekClient:
             print(f"Error: {e}")
             return None
 
-    def get_article_info(self, author_info: Dict) -> Dict:
+    def get_author_info(self, author_info: Dict) -> Dict:
         """_summary_
 
         Args:
@@ -181,7 +185,7 @@ class DeepSeekClient:
             Dict: _description_
         """
         name = author_info.get('name')
-        desc = author_info.get('description')
+        desc = author_info.get('description', '')
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -198,7 +202,7 @@ class DeepSeekClient:
             with open(f"tmp/{uuid4().hex}.txt", "a", encoding="utf-8") as f:
                 f.write(f"{author_info.get('id')}\n{content}\n\n")
             print(f"Error: {e}")
-            return None
+            return {}
 
     def get_field_info(self, field_info: Dict) -> Dict:
         """_summary_
@@ -227,7 +231,6 @@ class DeepSeekClient:
                 f.write(f"{field_info.get('id')}\n{content}\n\n")
             print(f"Error: {e}")
             return None
-
 
 
 class OllamaClient(DeepSeekClient):
