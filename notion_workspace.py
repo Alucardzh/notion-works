@@ -215,7 +215,7 @@ class NotionWorkspace:
                 properties_to_update=properties_to_update
             )
 
-    async def get_articals(
+    async def get_articles(
         self, database_id: str = 'c3f1101c-fbf7-4702-8dc4-a22578ac6430',
         fliter: str = '未开始', filter_type: str = "equals"
     ) -> List[Dict]:
@@ -251,7 +251,7 @@ class NotionWorkspace:
                 pass
         return res
 
-    async def get_articals_content(
+    async def get_articles_content(
         self, page_id: str
     ) -> List[Dict]:
         """获取文章内容并转换为Markdown格式
@@ -352,7 +352,7 @@ class NotionWorkspace:
             return False, False
         return markdown_text, blocks
 
-    async def update_artical_detail(
+    async def update_article_detail(
         self, page_id: str,
         author_id: str, status: str,
         category: List

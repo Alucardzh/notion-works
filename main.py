@@ -20,22 +20,23 @@ async def main():
         3. 获取待处理的文章列表
         4. 处理每篇文章的分类和作者信息
     """
-    pass_articals = list()
+    pass_articles = list()
     workflow = WorkFlow(notion_workspace=NotionWorkspace(rate_limit=0.5),
                         update_field_info=False)
     fields = await workflow.renew_fields()
-    articals = await workflow.worklow_get_articals(
+    articles = await workflow.worklow_get_articles(
         database_id='c3f1101c-fbf7-4702-8dc4-a22578ac6430',
         fliter='未开始', filter_type="equals")
-    for artical in articals:  # 当前仅处理第一篇文章
+    for article in articles:  # 当前仅处理第一篇文章
         try:
             res = await workflow.workflow_main(
-                artical=artical, fields=fields)
+                article=article, fields=fields)
             print(res)
-        except:
-            pass_articals += [artical]
-    with open('pass_articals.json', 'w+', encoding='utf-8') as f:
-        f.write(dumps(pass_articals, ensure_ascii=False))
+        except Exception as e:
+            print(e)
+            pass_articles += [article]
+    with open('pass_articles.json', 'w+', encoding='utf-8') as f:
+        f.write(dumps(pass_articles, ensure_ascii=False))
 
 if __name__ == "__main__":
     asyncio.run(main())

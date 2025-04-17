@@ -92,7 +92,7 @@ class WorkFlow:
 
     async def workflow_main(
         self,
-        artical: Dict = None,
+        article: Dict = None,
         fields: List = None
     ) -> None:
         """主要工作流程处理
@@ -100,7 +100,7 @@ class WorkFlow:
         处理单篇文章的分类、作者信息提取和数据库更新。
 
         Args:
-            artical: 文章信息字典
+            article: 文章信息字典
             fields: 分类字段列表
 
         流程：
@@ -111,8 +111,8 @@ class WorkFlow:
             5. 更新数据库记录
         """
         # 获取文章内容
-        content = await self.notion_workspace.get_articals_content(
-            page_id=artical.get('id'))
+        content = await self.notion_workspace.get_articles_content(
+            page_id=article.get('id'))
 
         # 生成分类目录
         catelog = [
@@ -126,7 +126,7 @@ class WorkFlow:
              "【分类类型】:【理由】",
              "==============",
              '\n'.join(catelog),
-             f"文章标题：{artical.get('name')}",
+             f"文章标题：{article.get('name')}",
              f"文章内容：{content}"
              ])
 
@@ -148,20 +148,20 @@ class WorkFlow:
         else:
             # 获取或创建作者ID
             author_id = await self.workflow_get_author_id(
-                article_info=article_info
-            )
-
+                article_info=article_info)
+        await save_temp_data_to_json(
+            {**article_info, **article},
+            self.save_path / f'{article.get("id")}.json')
         # 更新文章信息
-        return await self.notion_workspace.update_artical_detail(
-            page_id=artical.get('id'),
+        return await self.notion_workspace.update_article_detail(
+            page_id=article.get('id'),
             author_id=author_id,
             status=status,
             category=await self.workflow_get_field_id_list(
                 field_id=field_id, category=article_info.get('category')
-            )
-        )
+            ))
 
-    async def worklow_get_articals(
+    async def worklow_get_articles(
         self, database_id: str = 'c3f1101c-fbf7-4702-8dc4-a22578ac6430',
         fliter: str = '未开始', filter_type: str = "equals"
     ) -> List[Dict]:
@@ -175,7 +175,7 @@ class WorkFlow:
         Returns:
             List[Dict]: 文章信息列表
         """
-        return await self.notion_workspace.get_articals(
+        return await self.notion_workspace.get_articles(
             database_id=database_id, fliter=fliter, filter_type=filter_type)
 
     async def workflow_get_author_id(
