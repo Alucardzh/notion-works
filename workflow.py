@@ -14,7 +14,7 @@ from typing import List, Dict, Union
 import json
 from notion_api import save_data_to_file
 from notion_workspace import NotionWorkspace
-from llm import DeepSeekClient
+from llm import OllamaClient as LlmClient
 
 
 async def save_temp_data_to_json(data, filename) -> None:
@@ -55,7 +55,7 @@ class WorkFlow:
         self.notion_workspace = notion_workspace
         self.update_field_info = update_field_info
         self.save_path = save_path
-        self.deepseek = DeepSeekClient()
+        self.llm_model = LlmClient()
 
     async def renew_fields(self) -> Dict:
         """更新或获取分类字段信息
@@ -133,7 +133,7 @@ class WorkFlow:
              ])
 
         # 调用 DeepSeek API 分析文章信息
-        article_info = self.deepseek.get_article_info_from_file(
+        article_info = await self.llm_model.get_article_info_from_file(
             article_text=classify_catelog)
 
         # 提取作者信息
@@ -229,7 +229,7 @@ class WorkFlow:
         # 如果作者不存在，创建新记录
         if author_id is None:
             # 获取作者详细信息
-            res = self.deepseek.get_author_info(
+            res = self.llm_model.get_author_info(
                 author_info={"name": article_info.get("author")})
 
             # 创建新作者记录

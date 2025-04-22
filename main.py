@@ -23,12 +23,12 @@ async def main():
     """
     pass_articles = list()
     workflow = WorkFlow(notion_workspace=NotionWorkspace(rate_limit=0.5),
-                        update_field_info=False)
+                        update_field_info=True)
     fields = await workflow.renew_fields()
     articles = await workflow.worklow_get_articles(
         database_id='c3f1101c-fbf7-4702-8dc4-a22578ac6430',
-        fliter='未开始', filter_type="equal")
-    for article in articles:
+        fliter='信息缺失', filter_type="equals")
+    for article in articles[:1]:
         try:
             await workflow.workflow_main(
                 article=article, fields=fields)

@@ -11,6 +11,10 @@
 import json
 from typing import Dict, List, Optional
 from notion_api import NotionAsyncAPI, save_data_to_file
+from logging_config import setup_logger
+
+# 配置日志
+logger = setup_logger(__name__)
 
 
 class NotionWorkspace:
@@ -97,6 +101,7 @@ class NotionWorkspace:
             filter_type=filter_type if fliter else None,
         )
         content = content if isinstance(content, list) else [content]
+        logger.info(str(content))
         res = list()
         for i in content:
             简述 = i['properties']['简述'].get("rich_text")
@@ -187,12 +192,13 @@ class NotionWorkspace:
             filter_type=filter_type if fliter else None,
         )
         content = content if isinstance(content, list) else [content]
+        
         res = list()
         for i in content:
             res += [{
                 "id": i['id'],
-                "name": i['properties']['Name']['title'][0]['plain_text'],
-                "category": i['properties']['Name']['title'][0]['plain_text'],
+                "name": i['properties']['领域名称']['title'][0]['plain_text'],
+                "category": i['properties']['领域名称']['title'][0]['plain_text'],
                 "reason": i['properties']['分类概述'].get('rich_text')
             }]
         return res

@@ -18,6 +18,7 @@ from typing import Union, Dict
 from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
+from tools.searxing_search import SearxingSearch
 
 # 加载环境变量
 load_dotenv()
@@ -27,6 +28,7 @@ DEEKSEE_API_KEY = os.getenv("DEEKSEE_API_KEY", '')  # DeepSeek API密钥
 DEEKSEE_MODEL = os.getenv("DEEKSEE_MODEL", "deepseek-chat")  # DeepSeek模型名称
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", '')  # Ollama模型名称
 OLLAMA_URL = os.getenv("OLLAMA_URL", '')  # Ollama服务URL
+SEARXING_URL = os.getenv("SEARXING_HOST", "http://localhost:8080")
 
 
 class DeepSeekClient:
@@ -49,7 +51,7 @@ class DeepSeekClient:
         "content": """
             You are a smart assistant.
             Please read the article sent by the user and provide the following information:
-            1. Who is the author of the article?
+            1. Who is the author of the article? If this article is an interview, the author is defined as the interviewee.
             2. What type of article can it be classified as?
             3. Need to generate an AI cover image for the article, please provide suitable drawing prompts.
             Please answer in Chinese and output in the following format:
@@ -69,7 +71,7 @@ class DeepSeekClient:
         "content": """
             You are a smart assistant.
             Please read the information sent by the user and provide the following information:
-            1. The person with this name might be a celebrity, a scientist, a politician, a financial industry expert, or a well-known blog author. So, who is the person with this name? If you don't know, don't make it up. Just answer “unknown.” If the name is incomplete, please provide the full English name (if available) and the Chinese name (if available).
+            1. The person with this name might be a celebrity, a scientist, a politician, a financial industry expert, or a well-known blog author. So, who is the person with this name? If you don't know, don't make it up. Just answer "unknown." If the name is incomplete, please provide the full English name (if available) and the Chinese name (if available).
             2. Provide a brief introduction of this person.
             Please answer in Chinese and output in the following format:
             {"english name":english name, "chinese name":chinese name, "introduction": introduction}。
@@ -80,7 +82,7 @@ class DeepSeekClient:
         "role": "system",
         "content": """
             You are a smart assistant.
-            I’d like to classify some articles and have come up with my own category names. Could you analyze my naming and guess the reasoning behind the classification?
+            I'd like to classify some articles and have come up with my own category names. Could you analyze my naming and guess the reasoning behind the classification?
             Please answer in Chinese and output in the following format:
             {"category":category, "reason":reason}。
             """
@@ -243,6 +245,7 @@ class OllamaClient(DeepSeekClient):
     1. 支持本地部署
     2. 兼容DeepSeek接口
     3. 无需远程API
+    4. 支持联网搜索
 
     使用方法：
     client = OllamaClient()
@@ -259,7 +262,72 @@ class OllamaClient(DeepSeekClient):
             1. 继承DeepSeek客户端初始化
             2. 配置Ollama服务地址
             3. 设置本地模型
+            4. 初始化Searxing搜索客户端
         """
         super().__init__(model)
         self.model = model
         self.client = OpenAI(base_url=f'{OLLAMA_URL}/v1/', api_key='ollama')
+        self.searxing = SearxingSearch(
+            base_url=SEARXING_URL,
+            max_retries=3
+        )
+
+    async def get_article_info_from_file(self, article_text: Union[str, Path]) -> Dict:
+        """获取文章信息，支持联网搜索
+
+        Args:
+            article_text: 文章内容或文件路径
+
+        Returns:
+            Dict: 包含author、category和cover_image_prompt的字典
+
+        功能：
+            1. 分析文章内容
+            2. 识别作者信息
+            3. 确定文章类型
+            4. 生成封面图提示词
+            5. 使用Searxing进行联网搜索以提高准确性
+            6. 错误处理和日志记录
+        """
+        # 获取文章内容
+        content = self.check_file(article_text)
+        
+        # 使用Searxing进行联网搜索
+        try:
+            search_results = await self.searxing.search(
+                query=content[:100],  # 使用文章前100个字符作为搜索关键词
+                categories=["general"],
+                language="zh-CN"
+            )
+            
+            # 构建包含搜索结果的提示词
+            search_context = "\n\n相关搜索结果：\n"
+            if search_results and "results" in search_results:
+                for result in search_results["results"][:3]:  # 只使用前3个结果
+                    search_context += f"- {result.get('title', '')}: {result.get('content', '')}\n"
+        except Exception as e:
+            print(f"搜索失败: {e}")
+            search_context = ""
+
+        # 构建完整的提示词
+        full_prompt = f"{content}\n\n{search_context}"
+
+        # 调用Ollama API
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                self.system_prompt_for_get_article_info,
+                {"role": "user", "content": full_prompt},
+            ],
+            stream=False
+        )
+        
+        content = response.choices[0].message.content
+        try:
+            return self.answer_to_json(content)
+        except json.decoder.JSONDecodeError as e:
+            # 保存错误日志
+            with open(f"tmp/{uuid4().hex}.txt", "a", encoding="utf-8") as f:
+                f.write(f"{article_text}\n{content}\n\n")
+            print(f"Error: {e}")
+            return None
