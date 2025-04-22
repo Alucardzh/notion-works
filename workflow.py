@@ -10,7 +10,7 @@
 '''
 import os
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Union
 import json
 from notion_api import save_data_to_file
 from notion_workspace import NotionWorkspace
@@ -77,7 +77,7 @@ class WorkFlow:
 
     @staticmethod
     async def workflow_get_field_id_list(
-        field_id: Dict, category: List[str]
+        field_id: Dict, category: Union[str, List[str]]
     ) -> List[Dict]:
         """生成字段ID列表
 
@@ -88,7 +88,9 @@ class WorkFlow:
         Returns:
             List[Dict]: 包含字段ID的字典列表
         """
-        return [field_id.get(item) for item in category]
+        if isinstance(category, str):
+            category = category.split(',')
+        return [field_id.get(item.strip()) for item in category]
 
     async def workflow_main(
         self,
@@ -154,17 +156,25 @@ class WorkFlow:
             {**article_info, **article},
             self.save_path / 'output' / f'{article.get("id")}.json')
         # 更新文章信息
-        return await self.notion_workspace.update_article_detail(
-            page_id=article.get('id'),
-            author_id=author_id,
-            status=status,
-            category=await self.workflow_get_field_id_list(
+        update_data = {
+            "page_id": article.get('id'),
+            "status": status,
+            "category": await self.workflow_get_field_id_list(
                 field_id=field_id, category=article_info.get('category')
-            ))
+            )
+        }
+        if author_id:
+            return await self.notion_workspace.update_article_detail(
+                author_id=author_id,
+                **update_data)
+        else:
+            return await self.notion_workspace.update_article_detail(
+                **update_data)
 
     async def worklow_get_articles(
         self, database_id: str = 'c3f1101c-fbf7-4702-8dc4-a22578ac6430',
-        fliter: str = '未开始', filter_type: str = "equals"
+        fliter: str = '未开始', filter_type: str = "equals",
+        filter_property: str = "状态"
     ) -> List[Dict]:
         """获取符合条件的文章列表
 
@@ -172,12 +182,14 @@ class WorkFlow:
             database_id: 数据库ID
             fliter: 筛选条件值，默认为"未开始"
             filter_type: 筛选类型，默认为精确匹配
+            filter_property: 筛选属性
 
         Returns:
             List[Dict]: 文章信息列表
         """
         return await self.notion_workspace.get_articles(
-            database_id=database_id, fliter=fliter, filter_type=filter_type)
+            database_id=database_id, fliter=fliter, filter_type=filter_type,
+            filter_property=filter_property)
 
     async def workflow_get_author_id(
         self,

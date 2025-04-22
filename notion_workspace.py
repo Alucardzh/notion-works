@@ -8,9 +8,9 @@
  #   3. 更新文章内容
  #   4. 格式化数据转换
 '''
-
+import json
 from typing import Dict, List, Optional
-from notion_api import NotionAsyncAPI
+from notion_api import NotionAsyncAPI, save_data_to_file
 
 
 class NotionWorkspace:
@@ -217,7 +217,8 @@ class NotionWorkspace:
 
     async def get_articles(
         self, database_id: str = 'c3f1101c-fbf7-4702-8dc4-a22578ac6430',
-        fliter: str = '未开始', filter_type: str = "equals"
+        fliter: str = '未开始', filter_type: str = "equals",
+        filter_property: str = "状态"
     ) -> List[Dict]:
         """获取文章列表
 
@@ -235,7 +236,7 @@ class NotionWorkspace:
         """
         content = await self.notion_api.query_database_with_filter(
             database_id=database_id,
-            filter_property="状态" if fliter else None,
+            filter_property=filter_property if fliter else None,
             filter_value=fliter,
             filter_type=filter_type if fliter else None,
         )
@@ -354,8 +355,8 @@ class NotionWorkspace:
 
     async def update_article_detail(
         self, page_id: str,
-        author_id: str, status: str,
-        category: List
+        status: str,
+        category: List, author_id: str = None
     ) -> str:
         """更新文章详细信息
 
@@ -370,11 +371,19 @@ class NotionWorkspace:
         Returns:
             str: 更新结果信息
         """
-        await self.notion_api.update_page_properties(
-            page_id=page_id,
-            properties_to_update={
-                "作者": {"value": author_id, "type": "relation"},
-                "状态": {"value": status},
-                "分类": {"value": category}
-            })
+        if author_id:
+            await self.notion_api.update_page_properties(
+                page_id=page_id,
+                properties_to_update={
+                    "作者": {"value": author_id},
+                    "状态": {"value": status},
+                    "分类": {"value": category}
+                })
+        else:
+            await self.notion_api.update_page_properties(
+                page_id=page_id,
+                properties_to_update={
+                    "状态": {"value": status},
+                    "分类": {"value": category}
+                })
         return f'{page_id}: ok'

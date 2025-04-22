@@ -19,6 +19,7 @@ async def main():
         2. 更新或获取分类字段信息
         3. 获取待处理的文章列表
         4. 处理每篇文章的分类和作者信息
+        
     """
     pass_articles = list()
     workflow = WorkFlow(notion_workspace=NotionWorkspace(rate_limit=0.5),
@@ -26,12 +27,11 @@ async def main():
     fields = await workflow.renew_fields()
     articles = await workflow.worklow_get_articles(
         database_id='c3f1101c-fbf7-4702-8dc4-a22578ac6430',
-        fliter='未开始', filter_type="equals")
+        fliter='未开始', filter_type="equal")
     for article in articles:
         try:
-            res = await workflow.workflow_main(
+            await workflow.workflow_main(
                 article=article, fields=fields)
-            print(res)
         except Exception as e:
             print(e)
             pass_articles += [article]

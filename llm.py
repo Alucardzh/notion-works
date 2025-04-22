@@ -59,6 +59,7 @@ class DeepSeekClient:
             "author_english_name": author name in English or Chinese Pinyin,
             "author_chinese_name": author name in Chinese(if available) or none if you unknown}。
             The cover image prompt should be in English.
+            The category must be selected within the range provided by the user.
             If you cannot determine the author, please set author to "unknown".
             The article type can be multiple.
             """
