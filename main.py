@@ -21,17 +21,21 @@ async def main():
         4. 处理每篇文章的分类和作者信息
         
     """
+    article_status = '信息缺失'
     pass_articles = list()
     workflow = WorkFlow(notion_workspace=NotionWorkspace(rate_limit=0.5),
-                        update_field_info=True)
-    fields = await workflow.renew_fields()
+                        update_field_info=False)
+    # await workflow.workflow_remove_unknown_authors(fliter='进行中')
+    # fields = await workflow.renew_fields()
     articles = await workflow.worklow_get_articles(
         database_id='c3f1101c-fbf7-4702-8dc4-a22578ac6430',
-        fliter='信息缺失', filter_type="equals")
-    for article in articles[:1]:
+        fliter=article_status, filter_type="equals")
+    for article in articles:
         try:
-            await workflow.workflow_main(
-                article=article, fields=fields)
+            # await workflow.workflow_main(
+            #     article=article, fields=fields)
+            await workflow.workflow_main_no_fields(
+                article=article, article_status=article_status)
         except Exception as e:
             print(e)
             pass_articles += [article]

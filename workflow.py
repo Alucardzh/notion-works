@@ -113,28 +113,32 @@ class WorkFlow:
             5. 更新数据库记录
         """
         # 获取文章内容
-        content = await self.notion_workspace.get_articles_content(
-            page_id=article.get('id'))
-
+        page_id = article.get('id')
+        content, _ = await self.notion_workspace.get_articles_content(
+            page_id=page_id)
+        await save_data_to_file(
+            data=content, filename=self.save_path / f"{page_id}.md")
         # 生成分类目录
         catelog = [
-            f"{field['category']}:{field['reason']}" for field in fields]
+            f"- {field['category']}" for field in fields]
         field_id = {
             f"{field['category']}": f"{field['id']}" for field in fields}
-
+        content = content.replace('\n\n', '\n').replace('*', '')
         # 构建分类分析文本
         classify_catelog = "\n".join(
-            ["==============",
-             "【分类类型】:【理由】",
-             "==============",
+            ["======以下是分类范围========",
              '\n'.join(catelog),
+             "======分类范围结束========",
+             "=======以下是artical的内容=======",
              f"文章标题：{article.get('name')}",
-             f"文章内容：{content}"
+             "文章内容：\n",
+             content[:min(300, len(content))],
+             "=======artical的内容结束======="
              ])
 
         # 调用 DeepSeek API 分析文章信息
-        article_info = await self.llm_model.get_article_info_from_file(
-            article_text=classify_catelog)
+        article_info = self.llm_model.get_article_info_from_file(
+            article_text=classify_catelog, content=content)
 
         # 提取作者信息
         author = article_info.get('author')
@@ -143,8 +147,9 @@ class WorkFlow:
 
         # 设置文章状态
         status = "进行中"
-        if (author == 'unknown' and author_english_name == 'unknown'
-                and author_chinese_name == "none"):
+        unknown_author = ['unknown', '未知', 'none', None, '']
+        if (author in unknown_author and author_english_name in unknown_author
+                and author_chinese_name in unknown_author):
             status = "信息缺失"
             author_id = None
         else:
@@ -154,22 +159,92 @@ class WorkFlow:
         # 暂存LLM返回的结果
         await save_temp_data_to_json(
             {**article_info, **article},
-            self.save_path / 'output' / f'{article.get("id")}.json')
+            self.save_path / 'output' / f'{page_id}.json')
         # 更新文章信息
         update_data = {
-            "page_id": article.get('id'),
-            "status": status,
-            "category": await self.workflow_get_field_id_list(
+            "状态": {"value": status},
+            "分类": {"value": await self.workflow_get_field_id_list(
                 field_id=field_id, category=article_info.get('category')
-            )
+            )}
         }
         if author_id:
-            return await self.notion_workspace.update_article_detail(
-                author_id=author_id,
-                **update_data)
+            update_data['作者'] = {"value": author_id}
+        return await self.notion_workspace.update_article_detail(
+            page_id=page_id,
+            properties_to_update=update_data)
+
+    async def workflow_main_no_fields(
+        self,
+        article: Dict = None,
+        article_status: str = '信息缺失'
+    ) -> None:
+        """主要工作流程处理
+
+        处理单篇文章的分类、作者信息提取和数据库更新。
+
+        Args:
+            article: 文章信息字典
+            fields: 分类字段列表
+
+        流程：
+            1. 获取文章内容
+            2. 生成分类目录
+            3. 调用 DeepSeek 分析文章信息
+            4. 处理作者信息
+            5. 更新数据库记录
+        """
+        # 获取文章内容
+        page_id = article.get('id')
+        content, _ = await self.notion_workspace.get_articles_content(
+            page_id=page_id)
+        await save_data_to_file(
+            data=content, filename=self.save_path / f"{page_id}.md")
+
+        content = content.replace('\n\n', '\n').replace('*', '')
+        # 构建分类分析文本
+        classify_catelog = "\n".join(
+            ["=======以下是artical的内容=======",
+             f"文章标题：{article.get('name')}",
+             "文章内容：\n",
+             content[:min(400, len(content))],
+             "=======artical的内容结束======="
+             ])
+
+        # 调用 DeepSeek API 分析文章信息
+        article_info = self.llm_model.get_article_info_from_file_no_fields(
+            article_text=classify_catelog, content=content)
+
+        # 提取作者信息
+        author = article_info.get('author')
+        author_english_name = article_info.get('author_english_name')
+        author_chinese_name = article_info.get('author_chinese_name')
+
+        # 设置文章状态
+        status = "进行中"
+        unknown_author = ['unknown', '未知', 'none', None, '']
+        if (author in unknown_author and author_english_name in unknown_author
+                and author_chinese_name in unknown_author):
+            status = "信息缺失"
+            author_id = None
         else:
+            # 获取或创建作者ID
+            author_id = await self.workflow_get_author_id(
+                article_info=article_info)
+        # 暂存LLM返回的结果
+        await save_temp_data_to_json(
+            {**article_info, **article},
+            self.save_path / 'output' / f'{page_id}.json')
+        if article_status != status:
+            # 更新文章信息
+            update_data = {
+                "状态": {"value": status}
+            }
+            if author_id:
+                update_data['作者'] = {"value": author_id}
             return await self.notion_workspace.update_article_detail(
-                **update_data)
+                page_id=page_id,
+                properties_to_update=update_data)
+        return f'{page_id}: ok'
 
     async def worklow_get_articles(
         self, database_id: str = 'c3f1101c-fbf7-4702-8dc4-a22578ac6430',
@@ -210,11 +285,11 @@ class WorkFlow:
         """
         author_id = None
         chinese_name = article_info.get("author_chinese_name")
-
+        english_name = article_info.get("author_english_name")
         # 通过英文名称查询
         author_db = await self.notion_workspace.get_authors(
             filter_property="英文名称", filter_type="contains",
-            fliter=article_info.get("author_english_name"))
+            fliter=english_name)
 
         if author_db:
             author_id = author_db[0].get('id')
@@ -231,14 +306,45 @@ class WorkFlow:
             # 获取作者详细信息
             res = self.llm_model.get_author_info(
                 author_info={"name": article_info.get("author")})
-
+            author = article_info.get("author")
+            if author in ['unknown', '未知', 'none', None, '']:
+                author = article_info.get("author_english_name")
+            if chinese_name not in ['unknown', '未知', 'none', None, '']:
+                chinese_name = ""
             # 创建新作者记录
             author_id = await self.notion_workspace.new_authors(
                 properties={
-                    "中文名称": chinese_name if chinese_name != "none" else "",
-                    "英文名称": article_info.get("author_english_name", ""),
-                    "名称": article_info.get("author"),
-                    "简述": res.get("introduction", "")
+                    "中文名称": {"value": chinese_name},
+                    "英文名称": {"value": english_name},
+                    "名称": {"value": author},
+                    "简述": {"value": res.get("introduction", "")}
                 }
             )
         return author_id
+
+    async def workflow_remove_unknown_authors(
+        self,
+        fliter: str = '信息缺失'
+    ) -> None:
+        """删除作者记录
+
+        Args:
+            database_id: 数据库ID
+            fliter: 筛选条件值
+        """
+        authors_db = await self.notion_workspace.get_authors()
+        authors_id = [author['id'] for author in authors_db]
+        articles = await self.notion_workspace.get_articles(fliter=fliter)
+        for article in articles:
+            relation = article['author']
+            new_relation = [i for i in relation if i in authors_id]
+            if new_relation != relation or new_relation == []:
+                res = await self.notion_workspace.update_article_detail(
+                    page_id=article['id'],
+                    properties_to_update={
+                        "作者": {"value": new_relation}
+                    }
+                )
+                print(res)
+            else:
+                print(f"{article['name']}作者不变")

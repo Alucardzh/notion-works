@@ -7,9 +7,12 @@
  '''
 
 import httpx
-import asyncio
 from typing import List, Dict, Optional
 from urllib.parse import urljoin
+from .logging_config import setup_logger
+
+# 配置日志
+logger = setup_logger(__name__)
 
 
 class SearxingSearch:
@@ -34,12 +37,12 @@ class SearxingSearch:
         if api_key:
             self.headers['Authorization'] = f'Bearer {api_key}'
 
-    async def search(self, query: str,
-                     categories: Optional[List[str]] = None,
-                     engines: Optional[List[str]] = ['google'],
-                     language: str = 'zh-CN',
-                     page: int = 1,
-                     format: str = 'json') -> Dict:
+    def search(self, query: str,
+               categories: Optional[List[str]] = None,
+               engines: Optional[List[str]] = ['google'],
+               language: str = 'zh-CN',
+               page: int = 1,
+               format: str = 'json') -> Dict:
         """
         执行异步搜索查询
 
@@ -68,32 +71,34 @@ class SearxingSearch:
         for attempt in range(self.max_retries):
             try:
                 # 使用不同的客户端配置
-                transport = httpx.AsyncHTTPTransport(
+                transport = httpx.HTTPTransport(
                     retries=3,
                     verify=False,
                     trust_env=True
                 )
-                
-                async with httpx.AsyncClient(
+
+                with httpx.Client(
                     transport=transport,
                     headers=self.headers,
                     timeout=httpx.Timeout(30.0, connect=10.0),
                     follow_redirects=True,
-                    limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+                    limits=httpx.Limits(
+                        max_keepalive_connections=5, max_connections=10)
                 ) as client:
-                    response = await client.get(endpoint, params=params)
+                    response = client.get(endpoint, params=params)
                     response.raise_for_status()
                     return response.json()
             except httpx.HTTPError as e:
                 if attempt < self.max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)  # 指数退避
+                    pass
                 else:
-                    raise Exception(f"搜索请求失败，已重试 {self.max_retries} 次: {str(e)}")
+                    raise Exception(
+                        f"搜索请求失败，已重试 {self.max_retries} 次: {str(e)}")
             except Exception as e:
                 raise
 
 
-async def main_for_example():
+def main_for_example():
     try:
         # 初始化搜索客户端
         searxing = SearxingSearch(
@@ -102,7 +107,7 @@ async def main_for_example():
         )
 
         # 执行搜索
-        results = await searxing.search(
+        results = searxing.search(
             query="Python 编程",
             categories=["general"],
             language="zh-CN"
@@ -113,5 +118,6 @@ async def main_for_example():
     except Exception as e:
         print(f"程序执行失败: {str(e)}")
 
+
 if __name__ == "__main__":
-    asyncio.run(main_for_example())
+    main_for_example()

@@ -21,7 +21,7 @@ def setup_logger(name: str = None) -> logging.Logger:
         logging.Logger: 配置好的日志记录器
     """
     # 创建日志目录
-    log_dir = Path("logs")
+    log_dir = Path(__file__).parent.parent / "logs"
     log_dir.mkdir(exist_ok=True)
 
     # 创建日志记录器

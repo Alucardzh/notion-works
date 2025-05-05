@@ -11,7 +11,7 @@ import asyncio
 import aiofiles
 from dotenv import load_dotenv
 from notion_client import AsyncClient
-from logging_config import setup_logger
+from tools.logging_config import setup_logger
 
 # 配置日志
 logger = setup_logger(__name__)

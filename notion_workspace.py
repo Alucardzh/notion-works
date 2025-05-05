@@ -8,10 +8,9 @@
  #   3. 更新文章内容
  #   4. 格式化数据转换
 '''
-import json
 from typing import Dict, List, Optional
-from notion_api import NotionAsyncAPI, save_data_to_file
-from logging_config import setup_logger
+from notion_api import NotionAsyncAPI
+from tools.logging_config import setup_logger
 
 # 配置日志
 logger = setup_logger(__name__)
@@ -101,7 +100,6 @@ class NotionWorkspace:
             filter_type=filter_type if fliter else None,
         )
         content = content if isinstance(content, list) else [content]
-        logger.info(str(content))
         res = list()
         for i in content:
             简述 = i['properties']['简述'].get("rich_text")
@@ -192,14 +190,14 @@ class NotionWorkspace:
             filter_type=filter_type if fliter else None,
         )
         content = content if isinstance(content, list) else [content]
-        
+
         res = list()
         for i in content:
             res += [{
                 "id": i['id'],
                 "name": i['properties']['领域名称']['title'][0]['plain_text'],
                 "category": i['properties']['领域名称']['title'][0]['plain_text'],
-                "reason": i['properties']['分类概述'].get('rich_text')
+                "reason": i['properties']['分类概述']['rich_text'][0]['plain_text']
             }]
         return res
 
@@ -251,8 +249,10 @@ class NotionWorkspace:
         for i in content:
             try:
                 title = i['properties']['标题']['title'][0]['plain_text']
+                author = [relation['id']
+                          for relation in i['properties']['作者']['relation']]
                 if title != '新文章':  # 排除模板页面
-                    res += [{"id": i['id'], "name": title}]
+                    res += [{"id": i['id'], "name": title, "author": author}]
             except (KeyError, ValueError, IndexError):
                 # 跳过无效或不完整的条目
                 pass
@@ -355,14 +355,14 @@ class NotionWorkspace:
                         markdown_content.append(f"{icon} {text}\n\n")
 
         markdown_text = "".join(markdown_content)
+
         if not markdown_text.strip():
             return False, False
         return markdown_text, blocks
 
     async def update_article_detail(
         self, page_id: str,
-        status: str,
-        category: List, author_id: str = None
+        properties_to_update: Dict
     ) -> str:
         """更新文章详细信息
 
@@ -377,19 +377,7 @@ class NotionWorkspace:
         Returns:
             str: 更新结果信息
         """
-        if author_id:
-            await self.notion_api.update_page_properties(
-                page_id=page_id,
-                properties_to_update={
-                    "作者": {"value": author_id},
-                    "状态": {"value": status},
-                    "分类": {"value": category}
-                })
-        else:
-            await self.notion_api.update_page_properties(
-                page_id=page_id,
-                properties_to_update={
-                    "状态": {"value": status},
-                    "分类": {"value": category}
-                })
+        await self.notion_api.update_page_properties(
+            page_id=page_id,
+            properties_to_update=properties_to_update)
         return f'{page_id}: ok'
