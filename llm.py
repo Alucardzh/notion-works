@@ -14,13 +14,15 @@
 import os
 import json
 from uuid import uuid4
-from typing import Union, Dict
+from typing import Union, Dict, List
 from pathlib import Path
 import time
 from dotenv import load_dotenv
 from openai import OpenAI
 from tools.searxing_search import SearxingSearch
 from tools.logging_config import setup_logger
+from tools.merge_paragraphs import ParagraphsMerga
+
 
 logger = setup_logger(__name__)
 # 加载环境变量
@@ -49,7 +51,7 @@ class DeepSeekClient:
     """
 
     # 系统提示词配置
-    system_prompt_for_get_article_info = {
+    prompt_for_get_article_info = {
         "content": """
             You are a smart assistant.
             Please read the article and provide the following information:
@@ -64,7 +66,7 @@ class DeepSeekClient:
             "author_chinese_name": author name in Chinese(if available) or none if you unknown}.
             """
     }
-    system_prompt_for_get_article_info_no_fields = {
+    prompt_for_get_article_info_no_fields = {
         "content": """
             You are a smart assistant.
             Please read the article and provide the following information:
@@ -75,23 +77,32 @@ class DeepSeekClient:
             "author_chinese_name": author name in Chinese(if available) or none if you unknown}.
             """
     }
-    system_prompt_for_get_author_info = {
+    prompt_for_get_author_info = {
         "content": """
             You are a smart assistant.
             Please read the information sent by the user and provide the following information:
-            1. The person with this name might be a celebrity, a scientist, a politician, a financial industry expert, or a well-known blog author. So, who is the person with this name? If you don't know, don't make it up. Just answer "unknown." If the name is incomplete, please provide the full English name (if available) and the Chinese name (if available).
+            1. The person with this name might be a celebrity, a scientist, a politician, a financial industry expert, or a well-known blog author.
+            So, who is the person with this name? If you don't know, don't make it up. Just answer "unknown." If the name is incomplete,
+            please provide the full English name (if available) and the Chinese name (if available).
             2. Provide a brief introduction of this person.
             Please answer in Chinese and output in the following format:
             {"english name":english name, "chinese name":chinese name, "introduction": introduction}。
             The English name should be in English.
             """
     }
-    system_prompt_for_get_field_info = {
+    prompt_for_get_field_info = {
         "content": """
             You are a smart assistant.
-            I'd like to classify some articles and have come up with my own category names. Could you analyze my naming and guess the reasoning behind the classification?
+            I'd like to classify some articles and have come up with my own category names.
+            Could you analyze my naming and guess the reasoning behind the classification?
             Please answer in Chinese and output in the following format:
             {"category":category, "reason":reason}。
+            """
+    }
+    prompt_for_translator = {
+        "content": """
+            You are a smart assistant and Linguist, proficient in translating various languages into Chinese.
+            Translate the following text into Chinese, maintaining the same format as the original input. Only output the translated result.
             """
     }
 
@@ -133,6 +144,31 @@ class DeepSeekClient:
                 article_text = f.read()
         return article_text
 
+    def llm_response(self, message: List, tag: str) -> str:
+        """_summary_
+
+        Args:
+            message (List): _description_
+            tag (str): _description_
+
+        Returns:
+            str: _description_
+        """
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=message,
+            stream=False
+        )
+        content = response.choices[0].message.content
+        try:
+            return self.answer_to_json(content)
+        except json.decoder.JSONDecodeError as e:
+            # 保存错误日志
+            with open(f"tmp/{uuid4().hex}.txt", "a", encoding="utf-8") as f:
+                f.write(f"{tag}\n{content}\n\n")
+            print(f"Error: {e}")
+            return None
+
     @staticmethod
     def answer_to_json(answer: str) -> Dict:
         """将LLM回答转换为JSON格式
@@ -159,7 +195,6 @@ class DeepSeekClient:
 
     def get_article_info_from_file(
         self, article_text: Union[str, Path],
-        content: str = None
     ) -> Dict:
         """获取文章信息
 
@@ -176,24 +211,13 @@ class DeepSeekClient:
             4. 生成封面图提示词
             5. 错误处理和日志记录
         """
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": f"{self.assistant_name}",
-                 **self.system_prompt_for_get_article_info},
-                {"role": "user", "content": self.check_file(article_text)},
-            ],
-            stream=False
-        )
-        content = response.choices[0].message.content
-        try:
-            return self.answer_to_json(content)
-        except json.decoder.JSONDecodeError as e:
-            # 保存错误日志
-            with open(f"tmp/{uuid4().hex}.txt", "a", encoding="utf-8") as f:
-                f.write(f"{article_text}\n{content}\n\n")
-            print(f"Error: {e}")
-            return None
+        messages = [
+            {"role": f"{self.assistant_name}",
+             **self.prompt_for_get_article_info},
+            {"role": "user", "content": self.check_file(article_text)},
+        ]
+        tag = article_text
+        return self.llm_response(message=messages, tag=tag)
 
     def get_author_info(self, author_info: Dict) -> Dict:
         """_summary_
@@ -206,24 +230,13 @@ class DeepSeekClient:
         """
         name = author_info.get('name')
         desc = author_info.get('description', '')
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": f"{self.assistant_name}",
-                 **self.system_prompt_for_get_author_info},
-                {"role": "user", "content": f"{name}, {desc}"},
-            ],
-            stream=False
-        )
-        content = response.choices[0].message.content
-        try:
-            return self.answer_to_json(content)
-        except json.decoder.JSONDecodeError as e:
-            # 保存错误日志
-            with open(f"tmp/{uuid4().hex}.txt", "a", encoding="utf-8") as f:
-                f.write(f"{author_info.get('id')}\n{content}\n\n")
-            print(f"Error: {e}")
-            return {}
+        messages = [
+            {"role": f"{self.assistant_name}",
+             **self.prompt_for_get_author_info},
+            {"role": "user", "content": f"{name}, {desc}"},
+        ]
+        tag = author_info.get('id')
+        return self.llm_response(message=messages, tag=tag)
 
     def get_field_info(self, field_info: Dict) -> Dict:
         """_summary_
@@ -235,24 +248,52 @@ class DeepSeekClient:
             Dict: _description_
         """
         name = field_info.get('name')
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
+        messages = [
+            {"role": f"{self.assistant_name}",
+             **self.prompt_for_get_field_info},
+            {"role": "user", "content": f"{name}"},
+        ]
+        tag = field_info.get('id')
+        return self.llm_response(message=messages, tag=tag)
+
+    def translation(self, article_text: Union[str, Path],
+                    whole: bool = False, max_chars: int = 1000
+                    ) -> str:
+        """_summary_
+
+        Args:
+            article_text (Union[str, Path]): 输入文章内容或MD文件路径
+            whole (bool, optional): 是否整篇输入翻译. Defaults to False.
+            max_chars (int): 分段翻译控制字符长度. Defaults to 1000.
+
+        Returns:
+            str: _description_
+        """
+        paragraphs = ParagraphsMerga(
+            file_path=article_text, max_chars=max_chars)
+        content = paragraphs.main()
+        if whole is False:
+            translation = list()
+            for index, item in enumerate(content):
+                if item.strip():
+                    messages = [
+                        {"role": f"{self.assistant_name}",
+                         **self.prompt_for_translator},
+                        {"role": "user", "content": f"{item}"},
+                    ]
+                    res = self.llm_response(message=messages, tag=item)
+                    if res:
+                        translation += [[res, index]]
+            translation = sorted(translation, key=lambda x: x[1])
+            return "\n".join([i[0] for i in translation])
+        else:
+            content = "\n".join(content)
+            messages = [
                 {"role": f"{self.assistant_name}",
-                 **self.system_prompt_for_get_field_info},
-                {"role": "user", "content": f"{name}"},
-            ],
-            stream=False
-        )
-        content = response.choices[0].message.content
-        try:
-            return self.answer_to_json(content)
-        except json.decoder.JSONDecodeError as e:
-            # 保存错误日志
-            with open(f"tmp/{uuid4().hex}.txt", "a", encoding="utf-8") as f:
-                f.write(f"{field_info.get('id')}\n{content}\n\n")
-            print(f"Error: {e}")
-            return None
+                         **self.prompt_for_translator},
+                {"role": "user", "content": f"{content}"},
+            ]
+            return self.llm_response(message=messages, tag=content)
 
 
 class OllamaClient(DeepSeekClient):
@@ -327,20 +368,27 @@ class OllamaClient(DeepSeekClient):
             # 构建包含搜索结果的提示词
             search_context = "\n\n相关搜索结果：\n"
             if search_results and "results" in search_results:
-                for result in search_results["results"][:3]:  # 只使用前3个结果
-                    search_context += f"- {result.get('title', '')}: {result.get('content', '')}\n"
+                for i in search_results["results"][:3]:  # 只使用前3个结果
+                    title = i.get('title', '')
+                    data = i.get('content', '')
+                    search_context += f"- {title}: {data}\n"
         except Exception as e:
             logger.info("搜索失败: %s", (e))
             search_context = ""
 
         # 构建完整的提示词
-        full_prompt = f"""{article_text}\n======以下是根据文章前100个字符进行网页搜索的相关结果=========\n{search_context}\n===============搜索内容结束,可以在回答时进行参考==================\n"""
+        full_prompt = f"""{article_text}\n
+        ======以下是根据文章前100个字符进行网页搜索的相关结果=========\n
+        {search_context}\n
+        ===============搜索内容结束,可以在回答时进行参考==================\n
+        """
 
         # 调用Ollama API
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "user", "content": full_prompt + '\n' + self.system_prompt_for_get_article_info.get('content')},
+                {"role": "user", "content": full_prompt + '\n' +
+                    self.prompt_for_get_article_info.get('content')},
             ],
             stream=False
         )
@@ -399,13 +447,18 @@ class OllamaClient(DeepSeekClient):
             search_context = ""
 
         # 构建完整的提示词
-        full_prompt = f"""{article_text}\n======以下是根据文章前100个字符进行网页搜索的相关结果=========\n{search_context}\n===============搜索内容结束,可以在回答时进行参考==================\n"""
+        full_prompt = f"""{article_text}\n
+        ======以下是根据文章前100个字符进行网页搜索的相关结果=========\n
+        {search_context}\n
+        ===============搜索内容结束,可以在回答时进行参考==================\n
+        """
 
         # 调用Ollama API
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "user", "content": full_prompt + '\n' + self.system_prompt_for_get_article_info_no_fields.get('content')},
+                {"role": "user", "content": full_prompt + '\n' +
+                    self.prompt_for_get_article_info_no_fields.get('content')},
             ],
             stream=False
         )

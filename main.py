@@ -19,7 +19,7 @@ async def main():
         2. 更新或获取分类字段信息
         3. 获取待处理的文章列表
         4. 处理每篇文章的分类和作者信息
-        
+
     """
     article_status = '信息缺失'
     pass_articles = list()
@@ -42,6 +42,7 @@ async def main():
     if pass_articles:
         with open('pass_articles.json', 'w+', encoding='utf-8') as f:
             f.write(dumps(pass_articles, ensure_ascii=False))
+
 
 if __name__ == "__main__":
     asyncio.run(main())
