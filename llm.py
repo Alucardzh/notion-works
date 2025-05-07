@@ -199,6 +199,7 @@ class DeepSeekClient:
 
     def get_article_info_from_file(
         self, article_text: Union[str, Path],
+        content: str = None,
     ) -> Dict:
         """获取文章信息
 
