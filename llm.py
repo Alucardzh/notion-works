@@ -123,6 +123,10 @@ class DeepSeekClient:
         )
         self.model = model
         self.assistant_name = 'system'
+        self.searxing = SearxingSearch(
+            base_url=SEARXING_URL,
+            max_retries=3
+        )
 
     @staticmethod
     def check_file(article_text: Union[str, Path]) -> str:
@@ -255,6 +259,76 @@ class DeepSeekClient:
         ]
         tag = field_info.get('id')
         return self.llm_response(message=messages, tag=tag)
+
+    def get_article_info_from_file_no_fields(
+        self, article_text: Union[str, Path],
+        content: str = None,
+    ) -> Dict:
+        """获取文章信息，支持联网搜索
+
+        Args:
+            article_text: 文章内容或文件路径
+
+        Returns:
+            Dict: 包含author、category和cover_image_prompt的字典
+
+        功能：
+            1. 分析文章内容
+            2. 识别作者信息
+            3. 确定文章类型
+            4. 生成封面图提示词
+            5. 使用Searxing进行联网搜索以提高准确性
+            6. 错误处理和日志记录
+        """
+        # 获取文章内容
+        article_text = self.check_file(article_text)
+
+        # 使用Searxing进行联网搜索
+        try:
+            search_results = self.searxing.search(
+                query=content[:100].replace(
+                    "*", '').replace("\n", ""),  # 使用文章前100个字符作为搜索关键词
+                categories=["general"],
+                language="zh-CN"
+            )
+
+            # 构建包含搜索结果的提示词
+            search_context = "\n\n相关搜索结果：\n"
+            if search_results and "results" in search_results:
+                for i in search_results["results"][:5]:  # 只使用前3个结果
+                    search_context += f"- {i.get('title', '')}: {i.get('content', '')}\n"
+        except Exception as e:
+            logger.info("搜索失败: %s", (e))
+            search_context = ""
+
+        # 构建完整的提示词
+        full_prompt = f"""{article_text}\n
+        ======以下是根据文章前100个字符进行网页搜索的相关结果=========\n
+        {search_context}\n
+        ===============搜索内容结束,可以在回答时进行参考==================\n
+        """
+
+        # 调用 API
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "user", "content": full_prompt + '\n' +
+                    self.prompt_for_get_article_info_no_fields.get('content')},
+            ],
+            stream=False
+        )
+
+        res_content = response.choices[0].message.content
+        try:
+            with open(f"tmp/{time.time()}.txt", "a", encoding="utf-8") as f:
+                f.write(f"{full_prompt}\n\n{res_content}")
+            return self.answer_to_json(res_content)
+        except json.decoder.JSONDecodeError as e:
+            # 保存错误日志
+            with open(f"tmp/{time.time()}.txt", "a", encoding="utf-8") as f:
+                f.write(f"{full_prompt}\n\n{res_content}")
+            print(f"Error: {e}")
+            return None
 
     def translation(self, article_text: Union[str, Path],
                     whole: bool = False, max_chars: int = 1000
@@ -389,76 +463,6 @@ class OllamaClient(DeepSeekClient):
             messages=[
                 {"role": "user", "content": full_prompt + '\n' +
                     self.prompt_for_get_article_info.get('content')},
-            ],
-            stream=False
-        )
-
-        res_content = response.choices[0].message.content
-        try:
-            with open(f"tmp/{time.time()}.txt", "a", encoding="utf-8") as f:
-                f.write(f"{full_prompt}\n\n{res_content}")
-            return self.answer_to_json(res_content)
-        except json.decoder.JSONDecodeError as e:
-            # 保存错误日志
-            with open(f"tmp/{time.time()}.txt", "a", encoding="utf-8") as f:
-                f.write(f"{full_prompt}\n\n{res_content}")
-            print(f"Error: {e}")
-            return None
-
-    def get_article_info_from_file_no_fields(
-        self, article_text: Union[str, Path],
-        content: str = None,
-    ) -> Dict:
-        """获取文章信息，支持联网搜索
-
-        Args:
-            article_text: 文章内容或文件路径
-
-        Returns:
-            Dict: 包含author、category和cover_image_prompt的字典
-
-        功能：
-            1. 分析文章内容
-            2. 识别作者信息
-            3. 确定文章类型
-            4. 生成封面图提示词
-            5. 使用Searxing进行联网搜索以提高准确性
-            6. 错误处理和日志记录
-        """
-        # 获取文章内容
-        article_text = self.check_file(article_text)
-
-        # 使用Searxing进行联网搜索
-        try:
-            search_results = self.searxing.search(
-                query=content[:100].replace(
-                    "*", '').replace("\n", ""),  # 使用文章前100个字符作为搜索关键词
-                categories=["general"],
-                language="zh-CN"
-            )
-
-            # 构建包含搜索结果的提示词
-            search_context = "\n\n相关搜索结果：\n"
-            if search_results and "results" in search_results:
-                for result in search_results["results"][:5]:  # 只使用前3个结果
-                    search_context += f"- {result.get('title', '')}: {result.get('content', '')}\n"
-        except Exception as e:
-            logger.info("搜索失败: %s", (e))
-            search_context = ""
-
-        # 构建完整的提示词
-        full_prompt = f"""{article_text}\n
-        ======以下是根据文章前100个字符进行网页搜索的相关结果=========\n
-        {search_context}\n
-        ===============搜索内容结束,可以在回答时进行参考==================\n
-        """
-
-        # 调用Ollama API
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "user", "content": full_prompt + '\n' +
-                    self.prompt_for_get_article_info_no_fields.get('content')},
             ],
             stream=False
         )
